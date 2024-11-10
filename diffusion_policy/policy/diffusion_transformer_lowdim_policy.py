@@ -58,33 +58,48 @@ class DiffusionTransformerLowdimPolicy(BaseLowdimPolicy):
             # keyword arguments to scheduler.step
             **kwargs
             ):
+        """
+        条件采样函数,用于生成轨迹序列
+        
+        Args:
+            condition_data: 条件数据,用于约束生成结果
+            condition_mask: 条件掩码,指示哪些位置需要被约束
+            cond: 额外的条件信息
+            generator: 随机数生成器
+            **kwargs: 传递给scheduler.step的额外参数
+            
+        Returns:
+            trajectory: 生成的轨迹序列
+        """
         model = self.model
         scheduler = self.noise_scheduler
 
+        # 初始化随机轨迹
         trajectory = torch.randn(
             size=condition_data.shape, 
             dtype=condition_data.dtype,
             device=condition_data.device,
             generator=generator)
     
-        # set step values
+        # 设置采样步数
         scheduler.set_timesteps(self.num_inference_steps)
 
+        # 逐步去噪
         for t in scheduler.timesteps:
-            # 1. apply conditioning
+            # 1. 应用条件约束
             trajectory[condition_mask] = condition_data[condition_mask]
 
-            # 2. predict model output
+            # 2. 预测模型输出
             model_output = model(trajectory, t, cond)
 
-            # 3. compute previous image: x_t -> x_t-1
+            # 3. 计算前一时刻状态: x_t -> x_t-1
             trajectory = scheduler.step(
                 model_output, t, trajectory, 
                 generator=generator,
                 **kwargs
                 ).prev_sample
         
-        # finally make sure conditioning is enforced
+        # 最后确保条件约束得到满足
         trajectory[condition_mask] = condition_data[condition_mask]        
 
         return trajectory
